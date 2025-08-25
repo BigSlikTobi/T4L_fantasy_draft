@@ -1,0 +1,5 @@
+{
+  "name": "Fantasy Draft Helper",
+  "description": "An AI-powered fantasy football draft assistant that generates player tiers and provides personalized draft recommendations based on your league settings, team composition, and the best players available.",
+  "requestFramePermissions": []
+}
