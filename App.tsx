@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { DraftSettings, Player, Tier, UploadedPlayer, PlayerWithTier, DraftStrategy, DraftMode, DraftLogEntry, TeamRosters } from './types';
-import { getDraftStrategy, getDraftRecommendation, getMockDraftPick } from './services/geminiService';
+import { getDraftStrategy, getDraftRecommendation, getMockDraftPick } from './services/aiService';
 import SetupScreen from './components/SetupScreen';
 import DraftScreen from './components/DraftScreen';
 import Loader from './components/Loader';
@@ -18,6 +18,7 @@ const App: React.FC = () => {
   const [recommendation, setRecommendation] = useState<{ player: Player; explanation: string } | null>(null);
   const [strategy, setStrategy] = useState<DraftStrategy | null>(null);
   const [isStrategyModalOpen, setIsStrategyModalOpen] = useState<boolean>(false);
+  const [apiKeys, setApiKeys] = useState<{ gemini?: string; openai?: string }>({});
 
   // --- Mock Draft State ---
   const [draftMode, setDraftMode] = useState<DraftMode | null>(null);
@@ -28,9 +29,10 @@ const App: React.FC = () => {
   const [draftOrder, setDraftOrder] = useState<number[]>([]);
   const [isMyTurn, setIsMyTurn] = useState(false);
   
-  const handleDraftStart = (settings: DraftSettings, players: UploadedPlayer[], mode: DraftMode) => {
+  const handleDraftStart = (settings: DraftSettings, players: UploadedPlayer[], mode: DraftMode, keys: { gemini?: string; openai?: string }) => {
     setError(null);
     setDraftMode(mode);
+    setApiKeys(keys);
     try {
       const tiersMap = players.reduce((acc, player) => {
         const tierNum = player.tier;
@@ -126,7 +128,7 @@ const App: React.FC = () => {
       );
       const bestAvailable = availablePlayersWithTiers.slice(0, 50);
 
-      const result = await getDraftStrategy(draftSettings, myTeam, bestAvailable, Array.from(blockedPlayers), userFeedback);
+      const result = await getDraftStrategy(draftSettings, myTeam, bestAvailable, Array.from(blockedPlayers), apiKeys, userFeedback);
       setStrategy(result);
       setIsStrategyModalOpen(true);
     } catch (err) {
@@ -152,7 +154,7 @@ const App: React.FC = () => {
       );
       const bestAvailable = availablePlayersWithTiers.slice(0, 30);
 
-      const result = await getDraftRecommendation(draftSettings, myTeam, bestAvailable, Array.from(blockedPlayers), strategy);
+      const result = await getDraftRecommendation(draftSettings, myTeam, bestAvailable, Array.from(blockedPlayers), strategy, apiKeys);
       const recommendedPlayer = availablePlayers.find(p => p.name === result.playerName);
 
       if (recommendedPlayer) {
@@ -200,12 +202,14 @@ const App: React.FC = () => {
       const newDraftedPlayerNames = new Set<string>();
 
       try {
-        setLoadingMessage(`Simulating opponent picks...`);
+        setLoadingMessage(draftSettings.fastMode ? `Fast simulating opponent picks...` : `Simulating opponent picks...`);
         // Loop until it's the user's turn or the draft is over
         while (draftOrder[tempCurrentPick - 1] !== draftSettings.pickPosition && tempCurrentPick <= draftOrder.length) {
           const teamToPick = draftOrder[tempCurrentPick - 1];
-          // Provide a more dynamic loading message
-          setLoadingMessage(`Simulating pick #${tempCurrentPick} (Team ${teamToPick})...`);
+          // Provide a more dynamic loading message (less frequent in fast mode)
+          if (!draftSettings.fastMode || tempCurrentPick % 3 === 0) {
+            setLoadingMessage(`Simulating pick #${tempCurrentPick} (Team ${teamToPick})...`);
+          }
           
           const availablePlayersWithTiers = tempTiers.flatMap(t => t.players.map(p => ({ ...p, tier: t.tier })));
           
@@ -214,7 +218,7 @@ const App: React.FC = () => {
             break; // Exit loop if no players are left
           }
 
-          const result = await getMockDraftPick(draftSettings, tempTeamRosters, teamToPick, availablePlayersWithTiers.slice(0, 50), Array.from(blockedPlayers));
+          const result = await getMockDraftPick(draftSettings, tempTeamRosters, teamToPick, availablePlayersWithTiers.slice(0, 15), Array.from(blockedPlayers), apiKeys);
           const pickedPlayer = availablePlayersWithTiers.find(p => p.name === result.playerName);
           
           if (pickedPlayer) {
