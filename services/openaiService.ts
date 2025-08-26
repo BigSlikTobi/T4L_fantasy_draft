@@ -1,45 +1,18 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import OpenAI from 'openai';
 import { DraftSettings, Player, PlayerWithTier, DraftStrategy, TeamRosters } from '../types';
 
-let ai: GoogleGenAI | null = null;
+let openai: OpenAI | null = null;
 
 try {
-  if (process.env.GEMINI_API_KEY) {
-    ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  if (process.env.OPENAI_API_KEY) {
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+      dangerouslyAllowBrowser: true
+    });
   }
 } catch (error) {
-  console.warn("Gemini client could not be initialized:", error);
+  console.warn("OpenAI client could not be initialized:", error);
 }
-
-const strategySchema = {
-    type: Type.OBJECT,
-    properties: {
-        strategyName: {
-            type: Type.STRING,
-            description: "A concise name for the recommended draft strategy (e.g., 'Best Player Available', 'Zero RB', 'Target High-Upside WR')."
-        },
-        explanation: {
-            type: Type.STRING,
-            description: "A brief, 2-3 sentence explanation for why this strategy is recommended for the user's next pick, considering their current roster and the state of the draft board."
-        }
-    },
-    required: ["strategyName", "explanation"]
-};
-
-const recommendationSchema = {
-    type: Type.OBJECT,
-    properties: {
-        playerName: {
-            type: Type.STRING,
-            description: "The full name of the single player you recommend drafting."
-        },
-        explanation: {
-            type: Type.STRING,
-            description: "A brief, 2-3 sentence explanation for why this player is the best pick, considering both value and the user's current team composition."
-        }
-    },
-    required: ["playerName", "explanation"]
-};
 
 export const getDraftStrategy = async (
   settings: DraftSettings,
@@ -72,30 +45,38 @@ export const getDraftStrategy = async (
         ${feedbackInstruction}
         
         Provide a concise name for the strategy and a short explanation.
+        
+        Respond with a JSON object with the following structure:
+        {
+            "strategyName": "A concise name for the recommended draft strategy",
+            "explanation": "A brief, 2-3 sentence explanation for why this strategy is recommended"
+        }
     `;
 
     try {
-        const clientToUse = apiKey ? new GoogleGenAI({ apiKey }) : ai;
+        const clientToUse = apiKey ? new OpenAI({ apiKey, dangerouslyAllowBrowser: true }) : openai;
         
         if (!clientToUse) {
-            throw new Error("Gemini client not available. Please provide an API key.");
+            throw new Error("OpenAI client not available. Please provide an API key.");
         }
 
-        const response = await clientToUse.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: strategySchema
-            }
+        const completion = await clientToUse.chat.completions.create({
+            model: 'gpt-5-2025-08-07',
+            messages: [{ role: 'user', content: prompt }],
+            response_format: { type: 'json_object' }
         });
-        return JSON.parse(response.text);
+
+        const content = completion.choices[0]?.message?.content;
+        if (!content) {
+            throw new Error("No response from OpenAI");
+        }
+
+        return JSON.parse(content);
     } catch (error) {
         console.error("Error getting draft strategy:", error);
-        throw new Error("Failed to get draft strategy from Gemini API.");
+        throw new Error("Failed to get draft strategy from OpenAI API.");
     }
 };
-
 
 export const getDraftRecommendation = async (
   settings: DraftSettings,
@@ -129,32 +110,38 @@ export const getDraftRecommendation = async (
     Based EXPLICITLY on this strategy, who should I draft next?
     Your recommendation should be heavily influenced by the player tiers provided, but must align with the chosen strategy.
     Recommend a single player and provide a short, compelling explanation for why they are the perfect fit for this strategy.
+    
+    Respond with a JSON object with the following structure:
+    {
+        "playerName": "The full name of the single player you recommend drafting",
+        "explanation": "A brief, 2-3 sentence explanation for why this player is the best pick"
+    }
   `;
   
   try {
-    const clientToUse = apiKey ? new GoogleGenAI({ apiKey }) : ai;
+    const clientToUse = apiKey ? new OpenAI({ apiKey, dangerouslyAllowBrowser: true }) : openai;
     
     if (!clientToUse) {
-        throw new Error("Gemini client not available. Please provide an API key.");
+        throw new Error("OpenAI client not available. Please provide an API key.");
     }
 
-    const response = await clientToUse.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
-            responseMimeType: "application/json",
-            responseSchema: recommendationSchema
-        }
+    const completion = await clientToUse.chat.completions.create({
+        model: 'gpt-5-2025-08-07',
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' }
     });
-    
-    return JSON.parse(response.text);
 
+    const content = completion.choices[0]?.message?.content;
+    if (!content) {
+        throw new Error("No response from OpenAI");
+    }
+
+    return JSON.parse(content);
   } catch (error) {
     console.error("Error getting draft recommendation:", error);
-    throw new Error("Failed to get draft recommendation from Gemini API.");
+    throw new Error("Failed to get draft recommendation from OpenAI API.");
   }
 };
-
 
 export const getMockDraftPick = async (
     settings: DraftSettings,
@@ -184,27 +171,31 @@ ${positionSummary}
 Top available: ${topPlayers}
 ${blockedPlayers.length > 0 ? `Blocked: ${blockedPlayers.join(', ')}` : ''}
 
-Pick best player considering team needs and tier value (lower tier = better).`;
+Pick best player considering team needs and tier value (lower tier = better). JSON format: {"playerName": "Full Name", "explanation": "Brief reason"}`;
 
       try {
-          const clientToUse = apiKey ? new GoogleGenAI({ apiKey }) : ai;
+          const clientToUse = apiKey ? new OpenAI({ apiKey, dangerouslyAllowBrowser: true }) : openai;
           
           if (!clientToUse) {
-              throw new Error("Gemini client not available. Please provide an API key.");
+              throw new Error("OpenAI client not available. Please provide an API key.");
           }
 
-          const response = await clientToUse.models.generateContent({
-              model: 'gemini-2.5-flash-lite',
-              contents: prompt,
-              config: {
-                  responseMimeType: "application/json",
-                  responseSchema: recommendationSchema,
-                  thinkingConfig: { thinkingBudget: 0 }
-              }
+          const completion = await clientToUse.chat.completions.create({
+              model: 'gpt-5-nano-2025-08-07',
+              messages: [{ role: 'user', content: prompt }],
+              response_format: { type: 'json_object' },
+              max_tokens: 150,
+              temperature: 0.3
           });
-          return JSON.parse(response.text);
+
+          const content = completion.choices[0]?.message?.content;
+          if (!content) {
+              throw new Error("No response from OpenAI");
+          }
+
+          return JSON.parse(content);
       } catch (error) {
           console.error("Error getting mock draft pick:", error);
-          throw new Error("Failed to get mock draft pick from Gemini API.");
+          throw new Error("Failed to get mock draft pick from OpenAI API.");
       }
   };

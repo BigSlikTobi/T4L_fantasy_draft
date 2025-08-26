@@ -2,12 +2,15 @@ export type ScoringFormat = 'PPR' | 'Half PPR' | 'Standard';
 export type DraftFormat = 'Snake' | 'Linear';
 export type Position = 'QB' | 'RB' | 'WR' | 'TE' | 'K' | 'DST';
 export type DraftMode = 'assistant' | 'mock';
+export type AIProvider = 'gemini' | 'openai';
 
 export interface DraftSettings {
   leagueSize: number;
   scoringFormat: ScoringFormat;
   pickPosition: number;
   draftFormat: DraftFormat;
+  aiProvider: AIProvider;
+  fastMode?: boolean;
 }
 
 export interface Player {

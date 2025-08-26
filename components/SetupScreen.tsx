@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { DraftSettings, UploadedPlayer, Position, DraftMode } from '../types';
-import { SCORING_FORMATS, DRAFT_FORMATS, POSITIONS } from '../constants';
+import { SCORING_FORMATS, DRAFT_FORMATS, POSITIONS, AI_PROVIDERS } from '../constants';
 import { FootballIcon } from './icons/FootballIcon';
 import { FileUploadIcon } from './icons/FileUploadIcon';
 import { CheckIcon } from './icons/CheckIcon';
 
 interface SetupScreenProps {
-  onStart: (settings: DraftSettings, players: UploadedPlayer[], mode: DraftMode) => void;
+  onStart: (settings: DraftSettings, players: UploadedPlayer[], mode: DraftMode, apiKeys: { gemini?: string; openai?: string }) => void;
 }
 
 const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
@@ -15,17 +15,21 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
     scoringFormat: 'PPR',
     pickPosition: 1,
     draftFormat: 'Snake',
+    aiProvider: 'gemini',
+    fastMode: false,
   });
   const [players, setPlayers] = useState<UploadedPlayer[] | null>(null);
   const [fileName, setFileName] = useState<string>('');
   const [fileError, setFileError] = useState<string | null>(null);
   const [draftMode, setDraftMode] = useState<DraftMode>('assistant');
+  const [geminiApiKey, setGeminiApiKey] = useState<string>('');
+  const [openaiApiKey, setOpenaiApiKey] = useState<string>('');
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
+    const { name, value, type } = e.target;
     setSettings(prev => ({
       ...prev,
-      [name]: name === 'leagueSize' || name === 'pickPosition' ? parseInt(value, 10) : value,
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : (name === 'leagueSize' || name === 'pickPosition' ? parseInt(value, 10) : value),
     }));
   };
 
@@ -68,7 +72,11 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (players) {
-      onStart(settings, players, draftMode);
+      const apiKeys = {
+        gemini: geminiApiKey || undefined,
+        openai: openaiApiKey || undefined
+      };
+      onStart(settings, players, draftMode, apiKeys);
     }
   };
 
@@ -100,6 +108,23 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
               </button>
             </div>
           </div>
+          {draftMode === 'mock' && (
+            <div>
+              <label className="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  name="fastMode"
+                  checked={settings.fastMode || false}
+                  onChange={handleChange}
+                  className="h-4 w-4 text-teal-600 bg-gray-700 border-gray-600 rounded focus:ring-teal-500 focus:ring-2"
+                />
+                <span className="text-sm font-medium text-gray-300">Fast Mode</span>
+              </label>
+              <p className="mt-1 text-xs text-gray-400">
+                Speeds up mock draft picks with shorter AI prompts (recommended for faster simulations)
+              </p>
+            </div>
+          )}
           <div>
             <label htmlFor="leagueSize" className="block text-sm font-medium text-gray-300">No. of Teams</label>
             <input
@@ -133,6 +158,44 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
             </select>
           </div>
           <div>
+            <label htmlFor="aiProvider" className="block text-sm font-medium text-gray-300">AI Provider</label>
+            <select
+              id="aiProvider" name="aiProvider" value={settings.aiProvider} onChange={handleChange}
+              className="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-teal-500 focus:border-teal-500"
+            >
+              {AI_PROVIDERS.map(provider => (
+                <option key={provider} value={provider}>
+                  {provider === 'gemini' ? 'Google Gemini' : 'OpenAI GPT'}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="apiKey" className="block text-sm font-medium text-gray-300">
+              {settings.aiProvider === 'gemini' ? 'Gemini API Key' : 'OpenAI API Key'}
+            </label>
+            <input
+              type="password"
+              id="apiKey"
+              value={settings.aiProvider === 'gemini' ? geminiApiKey : openaiApiKey}
+              onChange={(e) => {
+                if (settings.aiProvider === 'gemini') {
+                  setGeminiApiKey(e.target.value);
+                } else {
+                  setOpenaiApiKey(e.target.value);
+                }
+              }}
+              placeholder={`Enter your ${settings.aiProvider === 'gemini' ? 'Gemini' : 'OpenAI'} API key`}
+              className="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-teal-500 focus:border-teal-500"
+              required
+            />
+            <p className="mt-1 text-xs text-gray-400">
+              {settings.aiProvider === 'gemini' 
+                ? 'Get your API key from https://ai.google.dev/' 
+                : 'Get your API key from https://platform.openai.com/api-keys'}
+            </p>
+          </div>
+          <div>
             <label htmlFor="playerFile" className="block text-sm font-medium text-gray-300">Player Rankings File</label>
             <label htmlFor="player-file-upload" className="mt-1 flex justify-center items-center gap-2 w-full px-3 py-2 border-2 border-dashed border-gray-600 rounded-md cursor-pointer bg-gray-700/50 hover:bg-gray-700/80 transition-colors">
               <FileUploadIcon className="w-5 h-5 text-gray-400"/>
@@ -149,7 +212,8 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
           </div>
 
           <button 
-            type="submit" disabled={!players}
+            type="submit" 
+            disabled={!players || (settings.aiProvider === 'gemini' ? !geminiApiKey : !openaiApiKey)}
             className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 focus:ring-offset-gray-800 transition-all transform hover:scale-105 disabled:bg-gray-600 disabled:cursor-not-allowed disabled:scale-100"
           >
             Start Draft

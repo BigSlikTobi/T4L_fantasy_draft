@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { DraftSettings, Player, Tier, UploadedPlayer, PlayerWithTier, DraftStrategy, DraftMode, DraftLogEntry, TeamRosters } from './types';
-import { getDraftStrategy, getDraftRecommendation, getMockDraftPick } from './services/geminiService';
+import { getDraftStrategy, getDraftRecommendation, getMockDraftPick } from './services/aiService';
 import SetupScreen from './components/SetupScreen';
 import DraftScreen from './components/DraftScreen';
 import Loader from './components/Loader';
@@ -18,6 +18,7 @@ const App: React.FC = () => {
   const [recommendation, setRecommendation] = useState<{ player: Player; explanation: string } | null>(null);
   const [strategy, setStrategy] = useState<DraftStrategy | null>(null);
   const [isStrategyModalOpen, setIsStrategyModalOpen] = useState<boolean>(false);
+  const [apiKeys, setApiKeys] = useState<{ gemini?: string; openai?: string }>({});
 
   // --- Mock Draft State ---
   const [draftMode, setDraftMode] = useState<DraftMode | null>(null);
@@ -28,9 +29,10 @@ const App: React.FC = () => {
   const [draftOrder, setDraftOrder] = useState<number[]>([]);
   const [isMyTurn, setIsMyTurn] = useState(false);
   
-  const handleDraftStart = (settings: DraftSettings, players: UploadedPlayer[], mode: DraftMode) => {
+  const handleDraftStart = (settings: DraftSettings, players: UploadedPlayer[], mode: DraftMode, keys: { gemini?: string; openai?: string }) => {
     setError(null);
     setDraftMode(mode);
+    setApiKeys(keys);
     try {
       const tiersMap = players.reduce((acc, player) => {
         const tierNum = player.tier;
@@ -126,7 +128,7 @@ const App: React.FC = () => {
       );
       const bestAvailable = availablePlayersWithTiers.slice(0, 50);
 
-      const result = await getDraftStrategy(draftSettings, myTeam, bestAvailable, Array.from(blockedPlayers), userFeedback);
+      const result = await getDraftStrategy(draftSettings, myTeam, bestAvailable, Array.from(blockedPlayers), apiKeys, userFeedback);
       setStrategy(result);
       setIsStrategyModalOpen(true);
     } catch (err) {
@@ -152,7 +154,7 @@ const App: React.FC = () => {
       );
       const bestAvailable = availablePlayersWithTiers.slice(0, 30);
 
-      const result = await getDraftRecommendation(draftSettings, myTeam, bestAvailable, Array.from(blockedPlayers), strategy);
+      const result = await getDraftRecommendation(draftSettings, myTeam, bestAvailable, Array.from(blockedPlayers), strategy, apiKeys);
       const recommendedPlayer = availablePlayers.find(p => p.name === result.playerName);
 
       if (recommendedPlayer) {
@@ -200,70 +202,143 @@ const App: React.FC = () => {
       const newDraftedPlayerNames = new Set<string>();
 
       try {
-        setLoadingMessage(`Simulating opponent picks...`);
-        // Loop until it's the user's turn or the draft is over
-        while (draftOrder[tempCurrentPick - 1] !== draftSettings.pickPosition && tempCurrentPick <= draftOrder.length) {
-          const teamToPick = draftOrder[tempCurrentPick - 1];
-          // Provide a more dynamic loading message
-          setLoadingMessage(`Simulating pick #${tempCurrentPick} (Team ${teamToPick})...`);
+        setLoadingMessage(draftSettings.fastMode ? `Fast simulating opponent picks...` : `Simulating opponent picks...`);
+        
+        // In fast mode, we'll add picks one by one with small delays for visual effect
+        if (draftSettings.fastMode) {
+          while (draftOrder[tempCurrentPick - 1] !== draftSettings.pickPosition && tempCurrentPick <= draftOrder.length) {
+            const teamToPick = draftOrder[tempCurrentPick - 1];
+            
+            if (tempCurrentPick % 3 === 0) {
+              setLoadingMessage(`Fast picking #${tempCurrentPick} (Team ${teamToPick})...`);
+            }
+            
+            const availablePlayersWithTiers = tempTiers.flatMap(t => t.players.map(p => ({ ...p, tier: t.tier })));
+            
+            if (availablePlayersWithTiers.length === 0) {
+              console.warn("No available players left to pick.");
+              break;
+            }
+
+            const result = await getMockDraftPick(draftSettings, tempTeamRosters, teamToPick, availablePlayersWithTiers.slice(0, 15), Array.from(blockedPlayers), apiKeys);
+            const pickedPlayer = availablePlayersWithTiers.find(p => p.name === result.playerName);
+            
+            if (pickedPlayer) {
+                tempTeamRosters = {
+                    ...tempTeamRosters,
+                    [teamToPick]: [...(tempTeamRosters[teamToPick] || []), pickedPlayer]
+                };
+                tempTiers = tempTiers.map(t => ({...t, players: t.players.filter(p => p.id !== pickedPlayer.id)})).filter(t => t.players.length > 0);
+                
+                const round = Math.floor((tempCurrentPick - 1) / draftSettings.leagueSize) + 1;
+                const pickInRound = ((tempCurrentPick - 1) % draftSettings.leagueSize) + 1;
+                const newEntry = { pick: tempCurrentPick, round, pickInRound, team: teamToPick, player: pickedPlayer };
+                
+                // Add pick immediately for animation
+                setDraftLog(log => [...log, newEntry]);
+                setTeamRosters(tempTeamRosters);
+                setTiers(tempTiers);
+                setDraftedPlayers(prev => new Set([...prev, pickedPlayer.name]));
+                setCurrentPick(tempCurrentPick + 1);
+                
+                tempCurrentPick++;
+                
+                // Small delay for visual effect
+                await new Promise(resolve => setTimeout(resolve, 150));
+            } else {
+               console.error(`Fast mode picked invalid player: ${result.playerName}`);
+               const fallbackPlayer = availablePlayersWithTiers[0];
+               if(fallbackPlayer) {
+                   tempTeamRosters = {
+                       ...tempTeamRosters,
+                       [teamToPick]: [...(tempTeamRosters[teamToPick] || []), fallbackPlayer]
+                   };
+                   tempTiers = tempTiers.map(t => ({...t, players: t.players.filter(p => p.id !== fallbackPlayer.id)})).filter(t => t.players.length > 0);
+                   
+                   const round = Math.floor((tempCurrentPick - 1) / draftSettings.leagueSize) + 1;
+                   const pickInRound = ((tempCurrentPick - 1) % draftSettings.leagueSize) + 1;
+                   const newEntry = { pick: tempCurrentPick, round, pickInRound, team: teamToPick, player: fallbackPlayer };
+                   
+                   setDraftLog(log => [...log, newEntry]);
+                   setTeamRosters(tempTeamRosters);
+                   setTiers(tempTiers);
+                   setDraftedPlayers(prev => new Set([...prev, fallbackPlayer.name]));
+                   setCurrentPick(tempCurrentPick + 1);
+                   
+                   tempCurrentPick++;
+                   await new Promise(resolve => setTimeout(resolve, 150));
+               } else {
+                 throw new Error('Fast mode failed and no fallback players available.');
+               }
+            }
+          }
           
-          const availablePlayersWithTiers = tempTiers.flatMap(t => t.players.map(p => ({ ...p, tier: t.tier })));
-          
-          if (availablePlayersWithTiers.length === 0) {
-            console.warn("No available players left to pick.");
-            break; // Exit loop if no players are left
+          // Check if it's now the user's turn
+          if (tempCurrentPick <= draftOrder.length && draftOrder[tempCurrentPick - 1] === draftSettings.pickPosition) {
+              setIsMyTurn(true);
+          }
+        } else {
+          // Original batch processing for regular mode
+          while (draftOrder[tempCurrentPick - 1] !== draftSettings.pickPosition && tempCurrentPick <= draftOrder.length) {
+            const teamToPick = draftOrder[tempCurrentPick - 1];
+            setLoadingMessage(`Simulating pick #${tempCurrentPick} (Team ${teamToPick})...`);
+            
+            const availablePlayersWithTiers = tempTiers.flatMap(t => t.players.map(p => ({ ...p, tier: t.tier })));
+            
+            if (availablePlayersWithTiers.length === 0) {
+              console.warn("No available players left to pick.");
+              break;
+            }
+
+            const result = await getMockDraftPick(draftSettings, tempTeamRosters, teamToPick, availablePlayersWithTiers.slice(0, 15), Array.from(blockedPlayers), apiKeys);
+            const pickedPlayer = availablePlayersWithTiers.find(p => p.name === result.playerName);
+            
+            if (pickedPlayer) {
+                tempTeamRosters = {
+                    ...tempTeamRosters,
+                    [teamToPick]: [...(tempTeamRosters[teamToPick] || []), pickedPlayer]
+                };
+                tempTiers = tempTiers.map(t => ({...t, players: t.players.filter(p => p.id !== pickedPlayer.id)})).filter(t => t.players.length > 0);
+                
+                const round = Math.floor((tempCurrentPick - 1) / draftSettings.leagueSize) + 1;
+                const pickInRound = ((tempCurrentPick - 1) % draftSettings.leagueSize) + 1;
+                newLogEntries.push({ pick: tempCurrentPick, round, pickInRound, team: teamToPick, player: pickedPlayer });
+                newDraftedPlayerNames.add(pickedPlayer.name);
+                
+                tempCurrentPick++;
+            } else {
+               console.error(`AI picked invalid player: ${result.playerName}. Picking best available.`);
+               const fallbackPlayer = availablePlayersWithTiers[0];
+               if(fallbackPlayer) {
+                   tempTeamRosters = {
+                       ...tempTeamRosters,
+                       [teamToPick]: [...(tempTeamRosters[teamToPick] || []), fallbackPlayer]
+                   };
+                   tempTiers = tempTiers.map(t => ({...t, players: t.players.filter(p => p.id !== fallbackPlayer.id)})).filter(t => t.players.length > 0);
+                   const round = Math.floor((tempCurrentPick - 1) / draftSettings.leagueSize) + 1;
+                   const pickInRound = ((tempCurrentPick - 1) % draftSettings.leagueSize) + 1;
+                   newLogEntries.push({ pick: tempCurrentPick, round, pickInRound, team: teamToPick, player: fallbackPlayer });
+                   newDraftedPlayerNames.add(fallbackPlayer.name);
+                   tempCurrentPick++;
+               } else {
+                 throw new Error('AI failed and no fallback players available.');
+               }
+            }
           }
 
-          const result = await getMockDraftPick(draftSettings, tempTeamRosters, teamToPick, availablePlayersWithTiers.slice(0, 50), Array.from(blockedPlayers));
-          const pickedPlayer = availablePlayersWithTiers.find(p => p.name === result.playerName);
-          
-          if (pickedPlayer) {
-              // Update temporary variables
-              tempTeamRosters = {
-                  ...tempTeamRosters,
-                  [teamToPick]: [...(tempTeamRosters[teamToPick] || []), pickedPlayer]
-              };
-              tempTiers = tempTiers.map(t => ({...t, players: t.players.filter(p => p.id !== pickedPlayer.id)})).filter(t => t.players.length > 0);
-              
-              const round = Math.floor((tempCurrentPick - 1) / draftSettings.leagueSize) + 1;
-              const pickInRound = ((tempCurrentPick - 1) % draftSettings.leagueSize) + 1;
-              newLogEntries.push({ pick: tempCurrentPick, round, pickInRound, team: teamToPick, player: pickedPlayer });
-              newDraftedPlayerNames.add(pickedPlayer.name);
-              
-              tempCurrentPick++;
-          } else {
-             // Graceful failure: if AI fails, pick the top available player
-             console.error(`AI picked invalid player: ${result.playerName}. Picking best available.`);
-             const fallbackPlayer = availablePlayersWithTiers[0];
-             if(fallbackPlayer) {
-                 tempTeamRosters = {
-                     ...tempTeamRosters,
-                     [teamToPick]: [...(tempTeamRosters[teamToPick] || []), fallbackPlayer]
-                 };
-                 tempTiers = tempTiers.map(t => ({...t, players: t.players.filter(p => p.id !== fallbackPlayer.id)})).filter(t => t.players.length > 0);
-                 const round = Math.floor((tempCurrentPick - 1) / draftSettings.leagueSize) + 1;
-                 const pickInRound = ((tempCurrentPick - 1) % draftSettings.leagueSize) + 1;
-                 newLogEntries.push({ pick: tempCurrentPick, round, pickInRound, team: teamToPick, player: fallbackPlayer });
-                 newDraftedPlayerNames.add(fallbackPlayer.name);
-                 tempCurrentPick++;
-             } else {
-               throw new Error('AI failed and no fallback players available.');
-             }
+          // Batch update React state once all picks are simulated (regular mode)
+          if (newLogEntries.length > 0) {
+              setDraftLog(log => [...log, ...newLogEntries]);
+              setTeamRosters(tempTeamRosters);
+              setTiers(tempTiers);
+              setDraftedPlayers(prev => new Set([...prev, ...newDraftedPlayerNames]));
+              setCurrentPick(tempCurrentPick);
           }
-        }
 
-        // Batch update React state once all picks are simulated
-        if (newLogEntries.length > 0) {
-            setDraftLog(log => [...log, ...newLogEntries]);
-            setTeamRosters(tempTeamRosters);
-            setTiers(tempTiers);
-            setDraftedPlayers(prev => new Set([...prev, ...newDraftedPlayerNames]));
-            setCurrentPick(tempCurrentPick);
-        }
-
-        // Check if the draft continues and if it's now the user's turn
-        if (tempCurrentPick <= draftOrder.length && draftOrder[tempCurrentPick - 1] === draftSettings.pickPosition) {
-            setIsMyTurn(true);
+          // Check if the draft continues and if it's now the user's turn
+          if (tempCurrentPick <= draftOrder.length && draftOrder[tempCurrentPick - 1] === draftSettings.pickPosition) {
+              setIsMyTurn(true);
+          }
         }
 
       } catch (err) {
@@ -289,7 +364,7 @@ const App: React.FC = () => {
         <p className="text-gray-400 mt-2">Your unfair advantage, powered by Gemini.</p>
       </header>
       
-      {isLoading && <Loader message={loadingMessage} />}
+      {isLoading && <Loader message={loadingMessage} fastMode={draftSettings?.fastMode} />}
 
       <main className="max-w-7xl mx-auto">
         {error && (
@@ -320,6 +395,7 @@ const App: React.FC = () => {
               leagueSize={draftSettings.leagueSize}
               isMyTurn={isMyTurn}
               isSimulating={isSimulating}
+              draftSettings={draftSettings}
             />
             {isStrategyModalOpen && strategy && (
               <StrategyModal 
