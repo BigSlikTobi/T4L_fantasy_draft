@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Tier, Player, Position, DraftMode, DraftLogEntry } from '../types';
+import { Tier, Player, Position, DraftMode, DraftLogEntry, DraftSettings } from '../types';
 import { POSITIONS } from '../constants';
 import PlayerCard from './PlayerCard';
 import RecommendationModal from './RecommendationModal';
@@ -26,12 +26,13 @@ interface DraftScreenProps {
   leagueSize: number;
   isMyTurn: boolean;
   isSimulating: boolean;
+  draftSettings?: DraftSettings;
 }
 
 const DraftScreen: React.FC<DraftScreenProps> = ({
   tiers, myTeam, draftedCount, blockedPlayers, onPlayerAction, onGetRecommendation,
   recommendation, onClearRecommendation, onReset, draftMode, draftLog, currentPick,
-  leagueSize, isMyTurn, isSimulating,
+  leagueSize, isMyTurn, isSimulating, draftSettings,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [positionFilter, setPositionFilter] = useState<Position | 'ALL'>('ALL');
@@ -77,7 +78,7 @@ const DraftScreen: React.FC<DraftScreenProps> = ({
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className={`grid grid-cols-1 lg:grid-cols-12 gap-6 transition-all duration-300 ${draftSettings?.fastMode ? 'animate-pulse opacity-90' : ''}`}>
         {recommendation && (
           <RecommendationModal
             recommendation={recommendation}
@@ -125,7 +126,13 @@ const DraftScreen: React.FC<DraftScreenProps> = ({
 
         {/* Right Column */}
         <div className="lg:col-span-4 xl:col-span-3 space-y-6">
-          {draftMode === 'mock' && <DraftLog log={draftLog} />}
+          {draftMode === 'mock' && (
+            <DraftLog 
+              log={draftLog} 
+              isSimulating={isSimulating}
+              fastMode={draftSettings?.fastMode || false}
+            />
+          )}
           <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
               <div className="flex justify-between items-center mb-4">
                   <h2 className="text-2xl font-bold text-gray-200 flex items-center gap-2"><TeamIcon className="w-6 h-6"/>My Team</h2>
