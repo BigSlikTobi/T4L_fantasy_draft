@@ -148,6 +148,16 @@ Deploying on Render (Static Site):
 * Publish Directory: `dist`
 * No server env vars required (keys entered in-app)
 
+### Firebase Hosting
+1. Install CLI (global optional): `npm i -g firebase-tools`
+2. Authenticate: `npx firebase login`
+3. Set your project id in `.firebaserc` (`YOUR_FIREBASE_PROJECT_ID`)
+4. Deploy:
+```
+npm run deploy
+```
+Hosting config lives in `firebase.json` (long-cache static assets, no-cache HTML).
+
 ---
 
 ## 🐞 Troubleshooting
