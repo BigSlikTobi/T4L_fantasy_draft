@@ -191,8 +191,6 @@ Return JSON: {"playerName": "Full Name", "explanation": "Brief reason"}`;
               model: 'gpt-5-nano-2025-08-07',
               messages: [{ role: 'user', content: prompt }],
               response_format: { type: 'json_object' },
-              max_tokens: 150,
-              temperature: 0.3
           });
 
           const content = completion.choices[0]?.message?.content;
