@@ -59,20 +59,21 @@ export const getDraftStrategy = async (
         ? `The user provided the following feedback on the last suggestion: "${userFeedback}". Take this into account and suggest a different strategy.`
         : '';
 
-    const prompt = `
-        You are an expert fantasy football draft analyst.
-        My league settings are: ${settings.leagueSize} teams, ${settings.scoringFormat} scoring.
-        My current roster is: ${myTeamRoster}.
-        The best available players, along with their value tier (lower tier number is better), are: ${availablePlayersList}.
-        The user has blocked these players: ${blockedPlayers.join(', ')}.
+  const prompt = `
+You are an expert fantasy football draft analyst.
+League: ${settings.leagueSize} teams, ${settings.scoringFormat} scoring.
+Current roster: ${myTeamRoster}.
+Best available (tiered, lower tier = better): ${availablePlayersList}.
+Blocked: ${blockedPlayers.join(', ')}.
 
-        Based on this situation, recommend a high-level draft strategy for my next pick.
-        Your analysis should consider team needs, player value (tiers), and potential positional runs.
-        Do NOT recommend a specific player yet. Just the strategy.
-        ${feedbackInstruction}
-        
-        Provide a concise name for the strategy and a short explanation.
-    `;
+Guidelines:
+- Do NOT build early strategy around K (kicker) or DST (defense/special teams).
+- Delay K/DST until late (roster size >= 12) unless core build is complete (>=1 QB, >=1 TE, >=5 combined RB/WR).
+- Only one K and one DST total; no backups.
+- Focus on tier cliffs, RB/WR depth balance, elite positional leverage at TE/QB, and avoiding positional runs.
+${feedbackInstruction}
+
+Task: Provide ONLY a high-level draft strategy for the next pick (no player names) in JSON (strategyName, explanation).`;
 
     try {
         const clientToUse = apiKey ? new GoogleGenAI({ apiKey }) : ai;
@@ -116,20 +117,21 @@ export const getDraftRecommendation = async (
     : '';
 
   const prompt = `
-    You are an expert fantasy football draft analyst.
-    My league settings are: ${settings.leagueSize} teams, ${settings.scoringFormat} scoring.
-    My current roster is: ${myTeamRoster}.
-    The best available players, along with their value tier (lower tier number is better), are: ${availablePlayersList}.
-    ${blockedPlayersList}
+You are an expert fantasy football draft analyst.
+League: ${settings.leagueSize} teams, ${settings.scoringFormat} scoring.
+Roster: ${myTeamRoster}.
+Available (tiered): ${availablePlayersList}.
+${blockedPlayersList}
 
-    We have agreed on the following strategy for this pick:
-    Strategy Name: ${strategy.strategyName}
-    Strategy Explanation: ${strategy.explanation}
+Current strategy:
+${strategy.strategyName} - ${strategy.explanation}
 
-    Based EXPLICITLY on this strategy, who should I draft next?
-    Your recommendation should be heavily influenced by the player tiers provided, but must align with the chosen strategy.
-    Recommend a single player and provide a short, compelling explanation for why they are the perfect fit for this strategy.
-  `;
+Rules:
+- Do NOT recommend K/DST unless roster size >= 12 OR core needs filled (QB>=1, TE>=1, RB+WR>=5).
+- Only one K and one DST total; never suggest a second.
+- Respect tier value; justify with tier & roster construction.
+
+Return JSON (playerName, explanation).`;
   
   try {
     const clientToUse = apiKey ? new GoogleGenAI({ apiKey }) : ai;
@@ -179,12 +181,18 @@ export const getMockDraftPick = async (
         ? `Current roster: ${Object.entries(positionCounts).map(([pos, count]) => `${count} ${pos}`).join(', ')}`
         : 'Empty roster';
 
-      const prompt = `Pick for Team ${pickingTeam} in ${settings.leagueSize}-team ${settings.scoringFormat} league.
-${positionSummary}
+  const rosterSize = currentTeam.length;
+  const prompt = `Pick for Team ${pickingTeam} in ${settings.leagueSize}-team ${settings.scoringFormat} league.
+${positionSummary} | Roster size: ${rosterSize}
 Top available: ${topPlayers}
 ${blockedPlayers.length > 0 ? `Blocked: ${blockedPlayers.join(', ')}` : ''}
 
-Pick best player considering team needs and tier value (lower tier = better).`;
+Rules:
+- Defer K/DST until roster size >= 12 unless core needs filled (QB>=1, TE>=1, RB+WR>=5).
+- Only 1 K and 1 DST total.
+- Prioritize filling starting & flex depth (RB/WR) and scarce advantage positions before K/DST.
+- Use tiers (lower = better) plus roster need & scarcity.
+Return JSON with playerName and explanation.`;
 
       try {
           const clientToUse = apiKey ? new GoogleGenAI({ apiKey }) : ai;

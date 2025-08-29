@@ -1,4 +1,5 @@
 import { DraftSettings, Player, PlayerWithTier, TeamRosters, Position } from '../types';
+import { computeEssentialNeeds, mustForceEssentialPick, pickEssentialPlayer, TOTAL_ROSTER_SLOTS } from './rosterLogic.ts';
 
 // Fast mode: Simple tier-based picking with basic position needs
 export const getFastMockDraftPick = (
@@ -20,16 +21,38 @@ export const getFastMockDraftPick = (
     positionCounts[pos] = positionCounts[pos] + 1;
   });
 
-  // Position priority based on typical draft strategy
+  // Position priority based on typical draft strategy.
+  // We DEPRIORITIZE K / DST until the final rounds (last 3-4 roster spots) unless everything else is filled.
+  const rosterSize = currentTeam.length; // target total = 16
+  const needs = computeEssentialNeeds(positionCounts as any);
+  const forceEssential = mustForceEssentialPick(rosterSize, needs);
+  const latePhase = rosterSize >= 12; // start considering K/DST lightly
+  const endPhase = rosterSize >= 14;  // must grab any missing K/DST
+
   const getPositionPriority = (position: Position, positionCounts: Record<Position, number>): number => {
     switch (position) {
-      case 'QB': return positionCounts.QB === 0 ? 2 : 0;
-      case 'RB': return positionCounts.RB < 2 ? 5 : (positionCounts.RB < 4 ? 3 : 1);
-      case 'WR': return positionCounts.WR < 2 ? 5 : (positionCounts.WR < 5 ? 4 : 2);
-      case 'TE': return positionCounts.TE === 0 ? 3 : 1;
-      case 'K': return positionCounts.K === 0 ? 1 : 0;
-      case 'DST': return positionCounts.DST === 0 ? 1 : 0;
-      default: return 1;
+      case 'QB':
+        // 1 QB early, slight bump for a safe backup very late
+        return positionCounts.QB === 0 ? 2.5 : (latePhase && positionCounts.QB === 1 ? 0.5 : 0);
+      case 'RB':
+        // Core + depth
+        return positionCounts.RB < 2 ? 6 : (positionCounts.RB < 4 ? 4 : (positionCounts.RB < 5 ? 2 : 0.5));
+      case 'WR':
+        return positionCounts.WR < 2 ? 6 : (positionCounts.WR < 5 ? 5 : (positionCounts.WR < 6 ? 2.5 : 1));
+      case 'TE':
+        return positionCounts.TE === 0 ? 3.5 : (latePhase && positionCounts.TE === 1 ? 0.5 : 0);
+      case 'K':
+        if (positionCounts.K > 0) return 0; // Only draft one
+        if (endPhase) return 8;            // Force pick if still missing
+        if (latePhase) return 1;           // Light consideration late
+        return -2;                         // Negative priority early
+      case 'DST':
+        if (positionCounts.DST > 0) return 0; // Only draft one
+        if (endPhase) return 8;              // Force pick if still missing
+        if (latePhase) return 1;             // Light consideration late
+        return -2;                           // Negative priority early
+      default:
+        return 1;
     }
   };
 
@@ -44,15 +67,47 @@ export const getFastMockDraftPick = (
   }
 
   // Score players based on tier (lower is better) and position need
+  // If we must force an essential slot, pick strictly from essentials
+  if (forceEssential) {
+    const essentialPick = pickEssentialPlayer(validPlayers, needs);
+    if (essentialPick) {
+      return {
+        playerName: essentialPick.name,
+        explanation: `Essential need fill (${essentialPick.position}) Tier ${essentialPick.tier}`
+      };
+    }
+  }
+
+  // End-game safeguard: if only 1 slot left after this pick and still missing K or DST, force whichever exists.
+  const slotsRemaining = TOTAL_ROSTER_SLOTS - rosterSize;
+  if (slotsRemaining <= 2) {
+    if (needs.needK) {
+      const k = validPlayers.find(p => p.position === 'K');
+      if (k) return { playerName: k.name, explanation: `Late required K (Tier ${k.tier})` };
+    }
+    if (needs.needDST) {
+      const d = validPlayers.find(p => p.position === 'DST');
+      if (d) return { playerName: d.name, explanation: `Late required DST (Tier ${d.tier})` };
+    }
+  }
+
   const scoredPlayers = validPlayers.map(player => {
-    const tierScore = player.tier; // Lower tier = better player
+    const tierScore = player.tier;
     const positionPriority = getPositionPriority(player.position, positionCounts);
-    const totalScore = tierScore - (positionPriority * 0.5); // Slight position preference
-    
-    return {
-      ...player,
-      score: totalScore
-    };
+    // Additional bump if player satisfies an unmet essential (except K/DST early) to accelerate meeting requirements
+    const essentialBonus = (() => {
+      switch (player.position) {
+        case 'QB': return needs.needQB ? 1.2 : 0;
+        case 'TE': return needs.needTE ? 1.0 : 0;
+        case 'RB': return needs.neededRB > 0 ? 1.5 : (needs.needFlex ? 0.6 : 0);
+        case 'WR': return needs.neededWR > 0 ? 1.5 : (needs.needFlex ? 0.6 : 0);
+        case 'DST': return needs.needDST && rosterSize >= 12 ? 2.2 : 0;
+        case 'K': return needs.needK && rosterSize >= 12 ? 2.0 : 0;
+        default: return 0;
+      }
+    })();
+    const totalScore = tierScore - (positionPriority * 0.55) - essentialBonus;
+    return { ...player, score: totalScore };
   });
 
   // Sort by score (lower is better)
