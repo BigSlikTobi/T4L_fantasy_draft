@@ -71,7 +71,7 @@ Minimum validation rules:
 
 ---
 ## 🔥 Run on Web
-Tackle4Loss Fantasy Draft is available at *[https.tackleforloss01.web.app]*
+Tackle4Loss Fantasy Draft is available at *[tackle4loss_fantasy_helper](https://tackleforloss01.firebaseapp.com/)*
 
 ## 🖥️ Run Locally
 Prerequisite: Node.js (LTS 18+ recommended).
