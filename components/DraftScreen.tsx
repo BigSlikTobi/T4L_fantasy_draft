@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Tier, Player, Position, DraftMode, DraftLogEntry, DraftSettings } from '../types';
+import { computeEssentialNeeds, essentialSlotsRemaining, TOTAL_ROSTER_SLOTS } from '../services/rosterLogic';
 import { POSITIONS } from '../constants';
 import PlayerCard from './PlayerCard';
 import RecommendationModal from './RecommendationModal';
@@ -47,6 +48,17 @@ const DraftScreen: React.FC<DraftScreenProps> = ({
         ),
       })).filter(tier => tier.players.length > 0);
   }, [tiers, searchTerm, positionFilter]);
+
+  // Essential roster status (only relevant in mock mode)
+  const rosterStatus = useMemo(() => {
+    if (!draftSettings || draftMode !== 'mock') return null;
+    const myRoster = myTeam;
+    const counts = { QB:0,RB:0,WR:0,TE:0,K:0,DST:0 } as Record<Position, number>;
+    myRoster.forEach(p => { counts[p.position]++; });
+    const needs = computeEssentialNeeds(counts as any);
+    const remaining = essentialSlotsRemaining(needs);
+    return { counts, needs, remaining, rosterSize: myRoster.length };
+  }, [myTeam, draftSettings, draftMode]);
   
   const myTeamByPosition = useMemo(() => {
     const grouped = myTeam.reduce((acc, player) => {
@@ -79,6 +91,19 @@ const DraftScreen: React.FC<DraftScreenProps> = ({
       )}
 
       <div className={`grid grid-cols-1 lg:grid-cols-12 gap-6 transition-all duration-300 ${draftSettings?.fastMode ? 'animate-pulse opacity-90' : ''}`}>
+        {draftMode === 'mock' && rosterStatus && (
+          <div className="lg:col-span-12 mb-2 flex flex-wrap gap-2 text-xs">
+            <StatusPill label={`Roster ${rosterStatus.rosterSize}/${TOTAL_ROSTER_SLOTS}`} />
+            <StatusPill label={`QB ${rosterStatus.counts.QB}${rosterStatus.needs.needQB ? ' (need)' : ''}`} warn={rosterStatus.needs.needQB} />
+            <StatusPill label={`RB ${rosterStatus.counts.RB}`} warn={rosterStatus.needs.neededRB>0} />
+            <StatusPill label={`WR ${rosterStatus.counts.WR}`} warn={rosterStatus.needs.neededWR>0} />
+            <StatusPill label={`TE ${rosterStatus.counts.TE}${rosterStatus.needs.needTE ? ' (need)' : ''}`} warn={rosterStatus.needs.needTE} />
+            <StatusPill label={`Flex ${rosterStatus.needs.needFlex ? 'open' : 'filled'}`} warn={rosterStatus.needs.needFlex} />
+            <StatusPill label={`DST ${rosterStatus.counts.DST}${rosterStatus.needs.needDST ? ' (late)' : ''}`} warn={rosterStatus.needs.needDST && rosterStatus.rosterSize>=12} />
+            <StatusPill label={`K ${rosterStatus.counts.K}${rosterStatus.needs.needK ? ' (late)' : ''}`} warn={rosterStatus.needs.needK && rosterStatus.rosterSize>=12} />
+            <StatusPill label={`Essential left ${rosterStatus.remaining}`} emphasize={rosterStatus.remaining === (16 - rosterStatus.rosterSize)} />
+          </div>
+        )}
         {recommendation && (
           <RecommendationModal
             recommendation={recommendation}
@@ -179,3 +204,8 @@ const DraftScreen: React.FC<DraftScreenProps> = ({
 };
 
 export default DraftScreen;
+
+// Inline lightweight pill component
+const StatusPill: React.FC<{label: string; warn?: boolean; emphasize?: boolean}> = ({ label, warn, emphasize }) => (
+  <span className={`px-2 py-1 rounded-full border text-[10px] tracking-wide uppercase ${emphasize ? 'bg-teal-600 text-white border-teal-500' : warn ? 'bg-red-900/40 text-red-300 border-red-600' : 'bg-gray-700/60 text-gray-300 border-gray-600'}`}>{label}</span>
+);

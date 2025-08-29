@@ -33,25 +33,25 @@ export const getDraftStrategy = async (
         : '';
 
     const prompt = `
-        You are an expert fantasy football draft analyst.
-        My league settings are: ${settings.leagueSize} teams, ${settings.scoringFormat} scoring.
-        My current roster is: ${myTeamRoster}.
-        The best available players, along with their value tier (lower tier number is better), are: ${availablePlayersList}.
-        The user has blocked these players: ${blockedPlayers.join(', ')}.
+You are an expert fantasy football draft analyst.
+League: ${settings.leagueSize} teams, ${settings.scoringFormat} scoring.
+My current roster: ${myTeamRoster}.
+Best available (with tier, lower = better): ${availablePlayersList}.
+Blocked players: ${blockedPlayers.join(', ')}.
 
-        Based on this situation, recommend a high-level draft strategy for my next pick.
-        Your analysis should consider team needs, player value (tiers), and potential positional runs.
-        Do NOT recommend a specific player yet. Just the strategy.
-        ${feedbackInstruction}
-        
-        Provide a concise name for the strategy and a short explanation.
-        
-        Respond with a JSON object with the following structure:
-        {
-            "strategyName": "A concise name for the recommended draft strategy",
-            "explanation": "A brief, 2-3 sentence explanation for why this strategy is recommended"
-        }
-    `;
+Guidelines:
+- NEVER build a strategy around drafting a K (kicker) or DST (defense) early.
+- Deprioritize K/DST until very late (roster size >= 12 or last 3–4 picks) unless all core needs are satisfied (>=1 QB, >=1 TE, and at least 5 combined RB/WR).
+- Only one K and one DST will ever be drafted total.
+- Focus strategy on RB/WR value pockets, elite positional advantage at TE/QB, roster construction, and tier drop-offs.
+${feedbackInstruction}
+
+Task: Recommend a high-level draft strategy for the NEXT pick ONLY (do NOT name a specific player).
+Return JSON:
+{
+  "strategyName": "Concise strategy name",
+  "explanation": "2-3 sentence rationale referencing roster construction & tier dynamics"
+}`;
 
     try {
         const clientToUse = apiKey ? new OpenAI({ apiKey, dangerouslyAllowBrowser: true }) : openai;
@@ -97,26 +97,26 @@ export const getDraftRecommendation = async (
     : '';
 
   const prompt = `
-    You are an expert fantasy football draft analyst.
-    My league settings are: ${settings.leagueSize} teams, ${settings.scoringFormat} scoring.
-    My current roster is: ${myTeamRoster}.
-    The best available players, along with their value tier (lower tier number is better), are: ${availablePlayersList}.
-    ${blockedPlayersList}
+You are an expert fantasy football draft analyst.
+League: ${settings.leagueSize} teams, ${settings.scoringFormat} scoring.
+My roster: ${myTeamRoster}.
+Available (tiered): ${availablePlayersList}.
+${blockedPlayersList}
 
-    We have agreed on the following strategy for this pick:
-    Strategy Name: ${strategy.strategyName}
-    Strategy Explanation: ${strategy.explanation}
+Current agreed strategy:
+Name: ${strategy.strategyName}
+Explanation: ${strategy.explanation}
 
-    Based EXPLICITLY on this strategy, who should I draft next?
-    Your recommendation should be heavily influenced by the player tiers provided, but must align with the chosen strategy.
-    Recommend a single player and provide a short, compelling explanation for why they are the perfect fit for this strategy.
-    
-    Respond with a JSON object with the following structure:
-    {
-        "playerName": "The full name of the single player you recommend drafting",
-        "explanation": "A brief, 2-3 sentence explanation for why this player is the best pick"
-    }
-  `;
+Rules:
+- DO NOT recommend a K or DST unless roster size >= 12 OR all core needs (QB, TE, depth at RB/WR) are addressed.
+- Only one K and one DST maximum; never recommend a second of either.
+- Respect tiers: prefer the best tier value that fits the strategy and roster construction.
+
+Return JSON only:
+{
+  "playerName": "Full Name",
+  "explanation": "2-3 sentence justification tied to strategy and tier value"
+}`;
   
   try {
     const clientToUse = apiKey ? new OpenAI({ apiKey, dangerouslyAllowBrowser: true }) : openai;
@@ -166,12 +166,19 @@ export const getMockDraftPick = async (
         ? `Current roster: ${Object.entries(positionCounts).map(([pos, count]) => `${count} ${pos}`).join(', ')}`
         : 'Empty roster';
 
-      const prompt = `Pick for Team ${pickingTeam} in ${settings.leagueSize}-team ${settings.scoringFormat} league.
-${positionSummary}
+  const rosterSize = currentTeam.length;
+  const prompt = `Pick for Team ${pickingTeam} in ${settings.leagueSize}-team ${settings.scoringFormat} league.
+${positionSummary} | Roster size: ${rosterSize}
 Top available: ${topPlayers}
 ${blockedPlayers.length > 0 ? `Blocked: ${blockedPlayers.join(', ')}` : ''}
 
-Pick best player considering team needs and tier value (lower tier = better). JSON format: {"playerName": "Full Name", "explanation": "Brief reason"}`;
+Rules:
+- Defer K / DST until roster size >= 12 (final rounds) unless ALL of: QB>=1, TE>=1, (RB+WR)>=5 already met.
+- Never select more than one K or one DST total.
+- Prefer filling RB/WR depth and any missing core starters before K/DST.
+- Use tiers: lower tier = better. Break ties by positional scarcity / roster need.
+
+Return JSON: {"playerName": "Full Name", "explanation": "Brief reason"}`;
 
       try {
           const clientToUse = apiKey ? new OpenAI({ apiKey, dangerouslyAllowBrowser: true }) : openai;
