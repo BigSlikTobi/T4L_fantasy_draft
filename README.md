@@ -70,6 +70,8 @@ Minimum validation rules:
 * Tiers numeric, ascending meaning higher value when lower
 
 ---
+## 🔥 Run on Web
+Tackle4Loss Fantasy Draft is available at **tackleforloss01.web.app**
 
 ## 🖥️ Run Locally
 Prerequisite: Node.js (LTS 18+ recommended).
