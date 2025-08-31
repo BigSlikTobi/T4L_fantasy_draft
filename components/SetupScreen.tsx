@@ -7,9 +7,10 @@ import { CheckIcon } from './icons/CheckIcon';
 
 interface SetupScreenProps {
   onStart: (settings: DraftSettings, players: UploadedPlayer[], mode: DraftMode, apiKeys: { gemini?: string; openai?: string }) => void;
+  onAutoMock?: (settings: DraftSettings, players: UploadedPlayer[], count: number, apiKeys: { gemini?: string; openai?: string }) => void;
 }
 
-const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
+const SetupScreen: React.FC<SetupScreenProps> = ({ onStart, onAutoMock }) => {
   const [settings, setSettings] = useState<DraftSettings>({
     leagueSize: 12,
     scoringFormat: 'PPR',
@@ -24,6 +25,7 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
   const [draftMode, setDraftMode] = useState<DraftMode>('assistant');
   const [geminiApiKey, setGeminiApiKey] = useState<string>('');
   const [openaiApiKey, setOpenaiApiKey] = useState<string>('');
+  const [autoMockCount, setAutoMockCount] = useState<number>(0);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -210,6 +212,21 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
             )}
             {fileError && <p className="mt-2 text-sm text-red-400">{fileError}</p>}
           </div>
+          {draftMode === 'mock' && (
+            <div>
+              <label htmlFor="autoMockCount" className="block text-sm font-medium text-gray-300">Auto Mock Drafts (batch)</label>
+              <input
+                type="number"
+                id="autoMockCount"
+                value={autoMockCount}
+                min={0}
+                max={50}
+                onChange={(e) => setAutoMockCount(parseInt(e.target.value || '0',10))}
+                className="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-teal-500 focus:border-teal-500"
+              />
+              <p className="mt-1 text-xs text-gray-400">Run fully automated AI mock simulations and view aggregate results.</p>
+            </div>
+          )}
 
           <button 
             type="submit" 
@@ -218,6 +235,16 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
           >
             Start Draft
           </button>
+          {draftMode === 'mock' && autoMockCount > 0 && (
+            <button
+              type="button"
+              onClick={() => players && onAutoMock && onAutoMock(settings, players, autoMockCount, { gemini: geminiApiKey || undefined, openai: openaiApiKey || undefined })}
+              disabled={!players || (settings.aiProvider === 'gemini' ? !geminiApiKey : !openaiApiKey)}
+              className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 focus:ring-offset-gray-800 transition-all transform hover:scale-105 disabled:bg-gray-600 disabled:cursor-not-allowed disabled:scale-100"
+            >
+              Run {autoMockCount} Auto Mock{autoMockCount>1?'s':''}
+            </button>
+          )}
         </form>
       </div>
     </div>

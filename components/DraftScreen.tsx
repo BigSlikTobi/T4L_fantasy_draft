@@ -5,6 +5,7 @@ import { POSITIONS } from '../constants';
 import PlayerCard from './PlayerCard';
 import RecommendationModal from './RecommendationModal';
 import DraftLog from './DraftLog';
+import LogBook from './LogBook';
 import { SearchIcon } from './icons/SearchIcon';
 import { TeamIcon } from './icons/TeamIcon';
 import { ResetIcon } from './icons/ResetIcon';
@@ -28,12 +29,14 @@ interface DraftScreenProps {
   isMyTurn: boolean;
   isSimulating: boolean;
   draftSettings?: DraftSettings;
+  strategyHistory?: { strategyName: string; explanation: string }[];
+  recommendationHistory?: { playerName: string; explanation: string }[];
 }
 
 const DraftScreen: React.FC<DraftScreenProps> = ({
   tiers, myTeam, draftedCount, blockedPlayers, onPlayerAction, onGetRecommendation,
   recommendation, onClearRecommendation, onReset, draftMode, draftLog, currentPick,
-  leagueSize, isMyTurn, isSimulating, draftSettings,
+  leagueSize, isMyTurn, isSimulating, draftSettings, strategyHistory = [], recommendationHistory = [],
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [positionFilter, setPositionFilter] = useState<Position | 'ALL'>('ALL');
@@ -49,16 +52,15 @@ const DraftScreen: React.FC<DraftScreenProps> = ({
       })).filter(tier => tier.players.length > 0);
   }, [tiers, searchTerm, positionFilter]);
 
-  // Essential roster status (only relevant in mock mode)
+  // Essential roster status (now for both assistant + mock modes)
   const rosterStatus = useMemo(() => {
-    if (!draftSettings || draftMode !== 'mock') return null;
-    const myRoster = myTeam;
+    if (!draftSettings) return null;
     const counts = { QB:0,RB:0,WR:0,TE:0,K:0,DST:0 } as Record<Position, number>;
-    myRoster.forEach(p => { counts[p.position]++; });
+    myTeam.forEach(p => { counts[p.position]++; });
     const needs = computeEssentialNeeds(counts as any);
     const remaining = essentialSlotsRemaining(needs);
-    return { counts, needs, remaining, rosterSize: myRoster.length };
-  }, [myTeam, draftSettings, draftMode]);
+    return { counts, needs, remaining, rosterSize: myTeam.length };
+  }, [myTeam, draftSettings]);
   
   const myTeamByPosition = useMemo(() => {
     const grouped = myTeam.reduce((acc, player) => {
@@ -91,7 +93,7 @@ const DraftScreen: React.FC<DraftScreenProps> = ({
       )}
 
       <div className={`grid grid-cols-1 lg:grid-cols-12 gap-6 transition-all duration-300 ${draftSettings?.fastMode ? 'animate-pulse opacity-90' : ''}`}>
-        {draftMode === 'mock' && rosterStatus && (
+  {rosterStatus && (
           <div className="lg:col-span-12 mb-2 flex flex-wrap gap-2 text-xs">
             <StatusPill label={`Roster ${rosterStatus.rosterSize}/${TOTAL_ROSTER_SLOTS}`} />
             <StatusPill label={`QB ${rosterStatus.counts.QB}${rosterStatus.needs.needQB ? ' (need)' : ''}`} warn={rosterStatus.needs.needQB} />
@@ -158,6 +160,7 @@ const DraftScreen: React.FC<DraftScreenProps> = ({
               fastMode={draftSettings?.fastMode || false}
             />
           )}
+          <LogBook strategies={strategyHistory} recommendations={recommendationHistory} />
           <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
               <div className="flex justify-between items-center mb-4">
                   <h2 className="text-2xl font-bold text-gray-200 flex items-center gap-2"><TeamIcon className="w-6 h-6"/>My Team</h2>

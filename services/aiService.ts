@@ -9,14 +9,15 @@ export const getDraftStrategy = async (
   availablePlayers: PlayerWithTier[],
   blockedPlayers: string[],
   apiKeys: { gemini?: string; openai?: string },
-  userFeedback?: string
+    userFeedback?: string,
+    memory?: { strategies: DraftStrategy[]; recommendations: { playerName: string; explanation: string }[] }
 ): Promise<DraftStrategy> => {
     const provider = settings.aiProvider;
     
     if (provider === 'openai') {
-        return openaiService.getDraftStrategy(settings, myTeam, availablePlayers, blockedPlayers, apiKeys.openai, userFeedback);
+                return openaiService.getDraftStrategy(settings, myTeam, availablePlayers, blockedPlayers, apiKeys.openai, userFeedback, memory);
     } else {
-        return geminiService.getDraftStrategy(settings, myTeam, availablePlayers, blockedPlayers, apiKeys.gemini, userFeedback);
+                return geminiService.getDraftStrategy(settings, myTeam, availablePlayers, blockedPlayers, apiKeys.gemini, userFeedback, memory);
     }
 };
 
@@ -26,14 +27,15 @@ export const getDraftRecommendation = async (
   availablePlayers: PlayerWithTier[],
   blockedPlayers: string[],
   strategy: DraftStrategy,
-  apiKeys: { gemini?: string; openai?: string }
+    apiKeys: { gemini?: string; openai?: string },
+    memory?: { strategies: DraftStrategy[]; recommendations: { playerName: string; explanation: string }[] }
 ): Promise<{ playerName: string; explanation: string }> => {
     const provider = settings.aiProvider;
     
     if (provider === 'openai') {
-        return openaiService.getDraftRecommendation(settings, myTeam, availablePlayers, blockedPlayers, strategy, apiKeys.openai);
+                return openaiService.getDraftRecommendation(settings, myTeam, availablePlayers, blockedPlayers, strategy, apiKeys.openai, memory);
     } else {
-        return geminiService.getDraftRecommendation(settings, myTeam, availablePlayers, blockedPlayers, strategy, apiKeys.gemini);
+                return geminiService.getDraftRecommendation(settings, myTeam, availablePlayers, blockedPlayers, strategy, apiKeys.gemini, memory);
     }
 };
 

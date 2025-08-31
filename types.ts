@@ -58,3 +58,18 @@ export interface DraftLogEntry {
 }
 
 export type TeamRosters = Record<number, Player[]>;
+
+// Auto mock draft simulation results
+export interface AutoMockPickLogEntry {
+  pick: number; // global pick number
+  round: number;
+  pickInRound: number;
+  player: Player;
+  explanation: string; // AI reasoning for this pick
+}
+
+export interface AutoMockDraftResult {
+  simulation: number; // simulation index starting at 1
+  roster: Player[];   // final roster for the user's team
+  pickLog: AutoMockPickLogEntry[]; // only picks of the user's team
+}
