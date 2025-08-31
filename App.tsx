@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { DraftSettings, Player, Tier, UploadedPlayer, PlayerWithTier, DraftStrategy, DraftMode, DraftLogEntry, TeamRosters, AutoMockDraftResult } from './types';
+import { DraftSettings, Player, Tier, UploadedPlayer, PlayerWithTier, DraftStrategy, DraftMode, DraftLogEntry, TeamRosters, AutoMockDraftResult, SleeperDraftPick } from './types';
 import { getDraftStrategy, getDraftRecommendation, getMockDraftPick } from './services/aiService';
 import { getFastMockDraftPick } from './services/fastMockService';
 import SetupScreen from './components/SetupScreen';
@@ -7,6 +7,7 @@ import DraftScreen from './components/DraftScreen';
 import Loader from './components/Loader';
 import StrategyModal from './components/StrategyModal';
 import AutoMockResults from './components/AutoMockResults';
+import { fetchSleeperDraftPicks } from './services/sleeperService';
 
 const App: React.FC = () => {
   const [draftSettings, setDraftSettings] = useState<DraftSettings | null>(null);
@@ -37,6 +38,8 @@ const App: React.FC = () => {
   const [isSimulating, setIsSimulating] = useState(false);
   const [draftOrder, setDraftOrder] = useState<number[]>([]);
   const [isMyTurn, setIsMyTurn] = useState(false);
+  // Sleeper sync state
+  const [lastSleeperPickNo, setLastSleeperPickNo] = useState<number>(0);
   
   const handleDraftStart = (settings: DraftSettings, players: UploadedPlayer[], mode: DraftMode, keys: { gemini?: string; openai?: string }) => {
     setError(null);
@@ -209,6 +212,7 @@ const App: React.FC = () => {
     setIsStrategyModalOpen(false); setDraftMode(null);
     setCurrentPick(1); setDraftLog([]); setTeamRosters({});
     setDraftOrder([]); setIsSimulating(false); setIsMyTurn(false);
+  setLastSleeperPickNo(0);
   setStrategyHistory([]); setRecommendationHistory([]);
     setAutoMockResults(null); setIsRunningAutoMocks(false);
   };
@@ -496,6 +500,51 @@ const App: React.FC = () => {
     simulateOpponentPicks();
   }, [draftMode, currentPick, draftSettings, draftOrder, isSimulating, isMyTurn, blockedPlayers, teamRosters, tiers]);
 
+  // Sleeper sync handler
+  const handleSyncSleeperDraft = useCallback(async () => {
+    if (!draftSettings?.sleeper?.draftId || !draftSettings.sleeper.userId) return;
+    try {
+      setIsLoading(true);
+      setLoadingMessage('Syncing live draft...');
+      const picks: SleeperDraftPick[] = await fetchSleeperDraftPicks(draftSettings.sleeper.draftId);
+      // Filter new picks based on last seen pick number (pick_no is 1-based incremental)
+      const newPicks = picks.filter(p => p.pick_no > lastSleeperPickNo);
+      if (newPicks.length === 0) return; // nothing new
+      let updatedTiers = tiers;
+      let updatedMyTeam = [...myTeam];
+      const draftedNames = new Set<string>();
+      for (const p of newPicks) {
+        const fullName = `${p.metadata.first_name || ''} ${p.metadata.last_name || ''}`.trim();
+        if (!fullName) continue;
+        draftedNames.add(fullName);
+        // Remove from board if present
+        updatedTiers = updatedTiers.map(t => ({ ...t, players: t.players.filter(pl => pl.name !== fullName) })).filter(t => t.players.length > 0);
+        // If pick belongs to current user, add to myTeam if not already there
+        if (p.picked_by === draftSettings.sleeper.userId && !updatedMyTeam.find(pl => pl.name === fullName)) {
+          // We may not have position/team in our uploaded list if removed earlier; we rely on existing player list before removal
+          // Try to recover position/team from the original tiers snapshot (before modifications) by searching current tiers (already filtered) is insufficient.
+          // Fallback: infer from metadata
+          const position = (p.metadata.position || '').toUpperCase();
+          const team = (p.metadata.team || '').toUpperCase();
+          const id = `${fullName}-${team}`.replace(/\s+/g, '-');
+          updatedMyTeam.push({ id, name: fullName, position: position as any, team });
+        }
+      }
+      setTiers(updatedTiers);
+      if (updatedMyTeam.length !== myTeam.length) setMyTeam(updatedMyTeam);
+      setDraftedPlayers(prev => new Set([...Array.from(prev), ...Array.from(draftedNames)]));
+      // Advance last seen pick number
+      const maxPick = Math.max(lastSleeperPickNo, ...newPicks.map(p => p.pick_no));
+      setLastSleeperPickNo(maxPick);
+    } catch (err) {
+      console.error('Sleeper sync failed', err);
+      setError('Failed to sync Sleeper draft.');
+    } finally {
+      setIsLoading(false);
+      setLoadingMessage('');
+    }
+  }, [draftSettings, lastSleeperPickNo, tiers, myTeam]);
+
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 font-sans p-4 sm:p-6 lg:p-8">
@@ -573,6 +622,8 @@ const App: React.FC = () => {
               draftSettings={draftSettings}
                 strategyHistory={strategyHistory}
                 recommendationHistory={recommendationHistory}
+              onSyncSleeperDraft={handleSyncSleeperDraft}
+              sleeperEnabled={!!draftSettings.sleeper?.draftId}
             />
             {isStrategyModalOpen && strategy && (
               <StrategyModal 

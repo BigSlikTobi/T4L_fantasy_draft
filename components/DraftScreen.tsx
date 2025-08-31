@@ -31,12 +31,14 @@ interface DraftScreenProps {
   draftSettings?: DraftSettings;
   strategyHistory?: { strategyName: string; explanation: string }[];
   recommendationHistory?: { playerName: string; explanation: string }[];
+  onSyncSleeperDraft?: () => void;
+  sleeperEnabled?: boolean;
 }
 
 const DraftScreen: React.FC<DraftScreenProps> = ({
   tiers, myTeam, draftedCount, blockedPlayers, onPlayerAction, onGetRecommendation,
   recommendation, onClearRecommendation, onReset, draftMode, draftLog, currentPick,
-  leagueSize, isMyTurn, isSimulating, draftSettings, strategyHistory = [], recommendationHistory = [],
+  leagueSize, isMyTurn, isSimulating, draftSettings, strategyHistory = [], recommendationHistory = [], onSyncSleeperDraft, sleeperEnabled,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [positionFilter, setPositionFilter] = useState<Position | 'ALL'>('ALL');
@@ -181,6 +183,13 @@ const DraftScreen: React.FC<DraftScreenProps> = ({
           <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 space-y-4">
               <h2 className="text-xl font-bold text-gray-200">Draft Actions</h2>
               <div className="text-sm text-gray-400">Total Players Drafted: <span className="font-bold text-white">{draftedCount}</span></div>
+              {sleeperEnabled && (
+                <button
+                  type="button"
+                  onClick={onSyncSleeperDraft}
+                  className="w-full text-center py-2.5 px-4 border border-transparent rounded-md shadow-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 transition disabled:bg-gray-600 disabled:cursor-not-allowed"
+                >My Turn (Sync Sleeper)</button>
+              )}
               <button
                   onClick={onGetRecommendation}
                   disabled={draftMode === 'mock' && (!isMyTurn || isSimulating)}
