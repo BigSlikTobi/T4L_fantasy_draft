@@ -10,7 +10,26 @@
 
 ---
 
-## 🚀 Overview
+## � Table of Contents
+1. [Overview](#-overview)
+2. [Key Features](#-key-features)
+3. [How It Works](#-how-it-works)
+4. [Player Rankings JSON Format](#-player-rankings-json-format)
+5. [Run on Web / Locally](#-run-on-web)
+6. [Sleeper Integration](#-sleeper-integration)
+7. [API Keys & Privacy](#-api-keys--privacy)
+8. [Simulation / Validation](#-simulation--validation-fast-mode)
+9. [Core Roster Enforcement](#-core-roster-enforcement)
+10. [Fast Mode Algorithm](#-fast-mode-algorithm-summary)
+11. [Build & Deploy](#-build--deploy)
+12. [Troubleshooting](#-troubleshooting)
+13. [Roadmap](#-roadmap-ideas)
+14. [License](#-license)
+15. [Contributing](#-contributing)
+
+---
+
+## �🚀 Overview
 This app acts as both a live Draft Assistant and a fully automated Mock Draft simulator. It ingests your custom tiered rankings (including K & DST in late tiers), applies strategic heuristics plus LLM reasoning (Google Gemini or OpenAI GPT), and produces fast, explainable picks. A tuned fast-mode algorithm + late-round roster logic guarantees you leave your draft with a structurally sound roster.
 
 ---
@@ -29,6 +48,7 @@ This app acts as both a live Draft Assistant and a fully automated Mock Draft si
 | API Key In-App Entry | No env vars required; keys never stored server-side |
 | Visual Feedback | Animated fast-mode pick flow, highlighting, pulsing phases |
 | Simulation Harness | Script to repeatedly test pick timing & validate late K/DST logic |
+| Sleeper Integration | Link your Sleeper account to auto‑prefill: league size, draft slot, scoring, format, total rounds |
 
 ---
 
@@ -87,9 +107,42 @@ Setup Screen Steps:
 2. (Optional) Enable Fast Mode for mocks
 3. Select AI provider (Gemini / OpenAI)
 4. Paste API key for chosen provider
-5. Configure league size, pick slot, format (Snake / Linear)
+5. (Optional) Enable Sleeper and fetch leagues/drafts to auto‑prefill settings
+6. Configure or confirm league size, pick slot, format (Snake / Linear), rounds (if not auto‑filled)
 6. Upload rankings JSON
 7. Start Draft
+
+### 🛌 Sleeper Integration
+The app can pull live draft configuration from Sleeper public endpoints—no auth token required.
+
+1. Tick “Link Sleeper Account”.
+2. Enter your Sleeper username → Fetch.
+3. Select a 2025 league (NFL only for now).
+4. Pick a listed draft (pre_draft, draft, or complete states supported).
+
+Once a draft is chosen we call:
+
+```
+GET https://api.sleeper.app/v1/draft/{draft_id}
+```
+
+We extract:
+* `draft_order` → maps `user_id` to draft slot (your pick position).
+* `settings.rounds` → total rounds (used as total roster slots instead of the previous hardcoded 16).
+* `settings.teams` / league `total_rosters` → league size.
+* `metadata.scoring_type` (ppr | half_ppr | standard) → maps to in‑app scoring format.
+* `type` → snake vs linear.
+
+These fields then auto-populate `DraftSettings` (`leagueSize`, `pickPosition`, `scoringFormat`, `draftFormat`, `totalRounds`). You can override any value manually afterwards.
+
+If `rounds` is absent we fall back to the default (16). Roster & essential need calculations are fully dynamic off `totalRounds`.
+
+Sync Button: During an Assistant draft with Sleeper enabled, use “My Turn (Sync Sleeper)” to align the local state once your actual pick comes up (future enhancement may poll automatically).
+
+Planned future Sleeper enhancements:
+* Live pick ingestion (websocket or periodic fetch of `/draft/{id}/picks`).
+* Auto-advance local draft board.
+* Multi-league season memory.
 
 ---
 
@@ -117,7 +170,7 @@ Outputs average roster slot when your tracked team drafts K & DST and flags earl
 ---
 
 ## 🤖 Core Roster Enforcement
-The system guarantees these slots within 16 picks:
+The system guarantees these slots within the configured total rounds (default 16):
 
 ```
 QB, RB, RB, WR, WR, TE, (Flex RB/WR), DST, K
@@ -126,7 +179,7 @@ Dynamic logic:
 * Tracks essential unmet needs each pick
 * If remaining picks == remaining essential slots → forced essential selection
 * K/DST only scored positively once roster size ≥ 12 unless forced
-* Final two slots: guaranteed fill if still missing
+* Final two (or proportional final ~12%) slots: guaranteed fill if still missing
 
 ---
 
@@ -182,7 +235,7 @@ Hosting config lives in `firebase.json` (long-cache static assets, no-cache HTML
 ---
 
 ## 📄 License
-No explicit license provided yet. Add one (e.g., MIT) if you plan to distribute.
+Licensed under the **MIT License**. See `LICENSE` for details.
 
 ---
 

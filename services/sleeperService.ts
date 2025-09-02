@@ -70,3 +70,15 @@ export function normalizeDrafts(drafts: SleeperDraft[]): NormalizedDraftOption[]
 export async function fetchSleeperDraftPicks(draftId: string): Promise<SleeperDraftPick[]> {
   return http<SleeperDraftPick[]>(`${BASE}/draft/${encodeURIComponent(draftId)}/picks`);
 }
+
+// Fetch a single draft for detailed settings (rounds, slots, etc.)
+export async function fetchSleeperDraft(draftId: string): Promise<SleeperDraft> {
+  return http<SleeperDraft>(`${BASE}/draft/${encodeURIComponent(draftId)}`);
+}
+
+// Derive total rounds (roster slots per team) from a Sleeper draft settings object.
+export function deriveTotalRoundsFromSleeperDraft(draft: SleeperDraft): number | undefined {
+  const rounds = draft.settings?.rounds;
+  if (typeof rounds === 'number' && rounds > 0 && rounds < 50) return rounds;
+  return undefined;
+}

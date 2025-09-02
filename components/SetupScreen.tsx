@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DraftSettings, UploadedPlayer, Position, DraftMode, SleeperLeague } from '../types';
 import { SCORING_FORMATS, DRAFT_FORMATS, POSITIONS, AI_PROVIDERS } from '../constants';
 import { FootballIcon } from './icons/FootballIcon';
 import { FileUploadIcon } from './icons/FileUploadIcon';
 import { CheckIcon } from './icons/CheckIcon';
-import { fetchSleeperUser, fetchSleeperLeagues, normalizeLeagues, NormalizedLeagueOption, fetchSleeperDrafts, normalizeDrafts, NormalizedDraftOption } from '../services/sleeperService';
+import { fetchSleeperUser, fetchSleeperLeagues, normalizeLeagues, NormalizedLeagueOption, fetchSleeperDrafts, normalizeDrafts, NormalizedDraftOption, fetchSleeperDraft, deriveTotalRoundsFromSleeperDraft } from '../services/sleeperService';
 
 interface SetupScreenProps {
   onStart: (settings: DraftSettings, players: UploadedPlayer[], mode: DraftMode, apiKeys: { gemini?: string; openai?: string }) => void;
@@ -38,14 +38,18 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart, onAutoMock }) => {
   const [sleeperError, setSleeperError] = useState<string | null>(null);
   const [draftOptions, setDraftOptions] = useState<NormalizedDraftOption[]>([]);
   const [selectedDraftId, setSelectedDraftId] = useState<string>('');
+  const [draftPrefillApplied, setDraftPrefillApplied] = useState<boolean>(false);
 
   const canStart = !!players && (settings.aiProvider === 'gemini' ? !!geminiApiKey : !!openaiApiKey) && (!useSleeper || (sleeperUserId && selectedLeagueId && selectedDraftId));
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
+    const numericFields = ['leagueSize', 'pickPosition', 'totalRounds'];
     setSettings(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : (name === 'leagueSize' || name === 'pickPosition' ? parseInt(value, 10) : value),
+      [name]: type === 'checkbox'
+        ? (e.target as HTMLInputElement).checked
+        : (numericFields.includes(name) ? (value ? parseInt(value, 10) : undefined) : value),
     }));
   };
 
@@ -138,12 +142,18 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart, onAutoMock }) => {
     setSleeperError(null);
     setDraftOptions([]);
     setSelectedDraftId('');
+    setDraftPrefillApplied(false);
     try {
       const drafts = await fetchSleeperDrafts(leagueId);
       const normalized = normalizeDrafts(drafts);
       setDraftOptions(normalized);
       if (normalized.length === 1) setSelectedDraftId(normalized[0].id);
       if (normalized.length === 0) setSleeperError('No drafts found for that league.');
+      // Prefill league size immediately from league selection
+      const league = leagueOptions.find(l => l.id === leagueId);
+      if (league) {
+        setSettings(prev => ({ ...prev, leagueSize: league.totalRosters }));
+      }
     } catch (err) {
       console.error(err);
       setSleeperError('Failed to fetch drafts for league.');
@@ -151,6 +161,42 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart, onAutoMock }) => {
       setSleeperLoading(false);
     }
   };
+
+  // When a draft is selected, fetch detailed info to prefill settings
+  useEffect(() => {
+    const prefillFromDraft = async () => {
+      if (!useSleeper || !selectedDraftId || !sleeperUserId) return;
+      try {
+        setSleeperLoading(true);
+        const draft = await fetchSleeperDraft(selectedDraftId);
+        const rounds = deriveTotalRoundsFromSleeperDraft(draft);
+        const pickPosition = draft.draft_order?.[sleeperUserId];
+        const rawScoring: string | undefined = (draft.metadata?.scoring_type || draft.settings?.scoring_type);
+        const scoringMap: Record<string, DraftSettings['scoringFormat']> = {
+          'ppr': 'PPR',
+          'half_ppr': 'Half PPR',
+          'half': 'Half PPR',
+          'standard': 'Standard'
+        };
+        const mappedScoring = rawScoring ? scoringMap[rawScoring.toLowerCase()] : undefined;
+        const type = draft.type?.toLowerCase() === 'linear' ? 'Linear' : 'Snake';
+        setSettings(prev => ({
+          ...prev,
+          leagueSize: prev.leagueSize, // already potentially set from league
+          pickPosition: pickPosition || prev.pickPosition,
+          scoringFormat: mappedScoring || prev.scoringFormat,
+          draftFormat: type as DraftSettings['draftFormat'],
+          totalRounds: rounds || prev.totalRounds
+        }));
+        setDraftPrefillApplied(true);
+      } catch (e) {
+        console.warn('Failed to prefill from draft', e);
+      } finally {
+        setSleeperLoading(false);
+      }
+    };
+    prefillFromDraft();
+  }, [useSleeper, selectedDraftId, sleeperUserId]);
 
   return (
     <div className="max-w-md mx-auto bg-gray-800 rounded-xl shadow-2xl overflow-hidden border border-gray-700">
@@ -186,13 +232,16 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart, onAutoMock }) => {
               <input
                 type="checkbox"
                 checked={useSleeper}
-                onChange={(e) => { setUseSleeper(e.target.checked); if (!e.target.checked) { setSleeperUsername(''); setSleeperUserId(''); setLeagueOptions([]); setSelectedLeagueId(''); setSleeperError(null);} }}
+                onChange={(e) => { setUseSleeper(e.target.checked); if (!e.target.checked) { setSleeperUsername(''); setSleeperUserId(''); setLeagueOptions([]); setSelectedLeagueId(''); setSelectedDraftId(''); setSleeperError(null); setDraftOptions([]); } }}
                 className="h-4 w-4 text-teal-600 bg-gray-700 border-gray-600 rounded focus:ring-teal-500 focus:ring-2"
               />
               <span className="text-sm font-medium text-gray-300">Link Sleeper Account (optional)</span>
             </label>
             {useSleeper && (
               <div className="space-y-3 bg-gray-700/40 p-3 rounded-md border border-gray-600">
+                {selectedDraftId && !sleeperLoading && (
+                  <p className="mt-1 text-[10px] text-gray-400">{draftPrefillApplied ? 'Draft settings applied.' : 'Fetching draft details...'}</p>
+                )}
                 <div>
                   <label className="block text-xs font-medium text-gray-400">Sleeper Username</label>
                   <div className="mt-1 flex gap-2">
@@ -299,6 +348,23 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart, onAutoMock }) => {
             >
               {DRAFT_FORMATS.map(format => <option key={format} value={format}>{format}</option>)}
             </select>
+          </div>
+          <div>
+            <label htmlFor="totalRounds" className="block text-sm font-medium text-gray-300">Rounds / Roster Slots</label>
+            <input
+              type="number"
+              id="totalRounds"
+              name="totalRounds"
+              value={settings.totalRounds || ''}
+              onChange={handleChange}
+              min={8}
+              max={40}
+              placeholder="e.g. 15 or 16"
+              className="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-teal-500 focus:border-teal-500"
+            />
+            {useSleeper && selectedDraftId && (
+              <p className="mt-1 text-xs text-gray-400">Auto-filled from Sleeper draft if available.</p>
+            )}
           </div>
           <div>
             <label htmlFor="aiProvider" className="block text-sm font-medium text-gray-300">AI Provider</label>

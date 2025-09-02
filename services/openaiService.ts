@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { DraftSettings, Player, PlayerWithTier, DraftStrategy, TeamRosters } from '../types';
-import { computeEssentialNeeds, essentialSlotsRemaining, TOTAL_ROSTER_SLOTS } from './rosterLogic';
+import { computeEssentialNeeds, essentialSlotsRemaining, DEFAULT_TOTAL_ROSTER_SLOTS } from './rosterLogic';
 
 let openai: OpenAI | null = null;
 
@@ -35,7 +35,8 @@ export const getDraftStrategy = async (
   myTeam.forEach(p => { counts[p.position] = (counts[p.position]||0)+1; });
   const needs = computeEssentialNeeds(counts as any);
   const essentialRemaining = essentialSlotsRemaining(needs);
-  const picksLeft = TOTAL_ROSTER_SLOTS - myTeam.length; // including current pick
+  const totalSlots = settings.totalRounds || DEFAULT_TOTAL_ROSTER_SLOTS;
+  const picksLeft = totalSlots - myTeam.length; // including current pick
   const unmet: string[] = [];
   if (needs.needQB) unmet.push('QB');
   if (needs.needTE) unmet.push('TE');
@@ -126,7 +127,8 @@ export const getDraftRecommendation = async (
   myTeam.forEach(p => { counts[p.position] = (counts[p.position]||0)+1; });
   const needs = computeEssentialNeeds(counts as any);
   const essentialRemaining = essentialSlotsRemaining(needs);
-  const picksLeft = TOTAL_ROSTER_SLOTS - myTeam.length; // including this pick
+  const totalSlots = settings.totalRounds || DEFAULT_TOTAL_ROSTER_SLOTS;
+  const picksLeft = totalSlots - myTeam.length; // including this pick
   const unmet: string[] = [];
   if (needs.needQB) unmet.push('QB');
   if (needs.needTE) unmet.push('TE');
@@ -229,7 +231,8 @@ export const getMockDraftPick = async (
   currentTeam.forEach(p => { counts[p.position] = (counts[p.position]||0)+1; });
   const needs = computeEssentialNeeds(counts as any);
   const essentialRemaining = essentialSlotsRemaining(needs);
-  const picksLeft = TOTAL_ROSTER_SLOTS - rosterSize;
+  const totalSlots = settings.totalRounds || DEFAULT_TOTAL_ROSTER_SLOTS;
+  const picksLeft = totalSlots - rosterSize;
   const unmet: string[] = [];
   if (needs.needQB) unmet.push('QB');
   if (needs.needTE) unmet.push('TE');

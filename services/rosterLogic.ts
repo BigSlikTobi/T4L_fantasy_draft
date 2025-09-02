@@ -10,7 +10,10 @@ export interface EssentialNeeds {
   needFlex: boolean; // true if RB+WR < 5 (after satisfying the above minimums)
 }
 
-export const TOTAL_ROSTER_SLOTS = 16;
+// Default / fallback total roster slots if dynamic draft rounds not supplied
+export const DEFAULT_TOTAL_ROSTER_SLOTS = 16;
+// Backwards compatibility (deprecated). Use settings.totalRounds || DEFAULT_TOTAL_ROSTER_SLOTS instead.
+export const TOTAL_ROSTER_SLOTS = DEFAULT_TOTAL_ROSTER_SLOTS;
 
 export function computeEssentialNeeds(counts: Record<Position, number>): EssentialNeeds {
   const neededRB = Math.max(0, 2 - counts.RB);
@@ -38,8 +41,8 @@ export function essentialSlotsRemaining(needs: EssentialNeeds): number {
 }
 
 // Decide if we must force an essential pick: remaining picks for team equals essential slots remaining.
-export function mustForceEssentialPick(currentRosterSize: number, needs: EssentialNeeds): boolean {
-  const remaining = TOTAL_ROSTER_SLOTS - currentRosterSize;
+export function mustForceEssentialPick(currentRosterSize: number, needs: EssentialNeeds, totalRosterSlots: number = DEFAULT_TOTAL_ROSTER_SLOTS): boolean {
+  const remaining = totalRosterSlots - currentRosterSize;
   return essentialSlotsRemaining(needs) === remaining;
 }
 

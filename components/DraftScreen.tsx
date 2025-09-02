@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Tier, Player, Position, DraftMode, DraftLogEntry, DraftSettings } from '../types';
-import { computeEssentialNeeds, essentialSlotsRemaining, TOTAL_ROSTER_SLOTS } from '../services/rosterLogic';
+import { computeEssentialNeeds, essentialSlotsRemaining, DEFAULT_TOTAL_ROSTER_SLOTS } from '../services/rosterLogic';
 import { POSITIONS } from '../constants';
 import PlayerCard from './PlayerCard';
 import RecommendationModal from './RecommendationModal';
@@ -76,7 +76,8 @@ const DraftScreen: React.FC<DraftScreenProps> = ({
 
   const round = Math.floor((currentPick - 1) / leagueSize) + 1;
   const pickInRound = ((currentPick - 1) % leagueSize) + 1;
-  const draftIsOver = currentPick > leagueSize * 16;
+  const totalSlots = draftSettings?.totalRounds || DEFAULT_TOTAL_ROSTER_SLOTS;
+  const draftIsOver = currentPick > leagueSize * totalSlots;
 
 
   return (
@@ -97,7 +98,7 @@ const DraftScreen: React.FC<DraftScreenProps> = ({
       <div className={`grid grid-cols-1 lg:grid-cols-12 gap-6 transition-all duration-300 ${draftSettings?.fastMode ? 'animate-pulse opacity-90' : ''}`}>
   {rosterStatus && (
           <div className="lg:col-span-12 mb-2 flex flex-wrap gap-2 text-xs">
-            <StatusPill label={`Roster ${rosterStatus.rosterSize}/${TOTAL_ROSTER_SLOTS}`} />
+            <StatusPill label={`Roster ${rosterStatus.rosterSize}/${totalSlots}`} />
             <StatusPill label={`QB ${rosterStatus.counts.QB}${rosterStatus.needs.needQB ? ' (need)' : ''}`} warn={rosterStatus.needs.needQB} />
             <StatusPill label={`RB ${rosterStatus.counts.RB}`} warn={rosterStatus.needs.neededRB>0} />
             <StatusPill label={`WR ${rosterStatus.counts.WR}`} warn={rosterStatus.needs.neededWR>0} />
@@ -105,7 +106,7 @@ const DraftScreen: React.FC<DraftScreenProps> = ({
             <StatusPill label={`Flex ${rosterStatus.needs.needFlex ? 'open' : 'filled'}`} warn={rosterStatus.needs.needFlex} />
             <StatusPill label={`DST ${rosterStatus.counts.DST}${rosterStatus.needs.needDST ? ' (late)' : ''}`} warn={rosterStatus.needs.needDST && rosterStatus.rosterSize>=12} />
             <StatusPill label={`K ${rosterStatus.counts.K}${rosterStatus.needs.needK ? ' (late)' : ''}`} warn={rosterStatus.needs.needK && rosterStatus.rosterSize>=12} />
-            <StatusPill label={`Essential left ${rosterStatus.remaining}`} emphasize={rosterStatus.remaining === (16 - rosterStatus.rosterSize)} />
+            <StatusPill label={`Essential left ${rosterStatus.remaining}`} emphasize={rosterStatus.remaining === (totalSlots - rosterStatus.rosterSize)} />
           </div>
         )}
         {recommendation && (
@@ -166,7 +167,7 @@ const DraftScreen: React.FC<DraftScreenProps> = ({
           <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
               <div className="flex justify-between items-center mb-4">
                   <h2 className="text-2xl font-bold text-gray-200 flex items-center gap-2"><TeamIcon className="w-6 h-6"/>My Team</h2>
-                  <span className="text-sm font-mono bg-gray-700 text-teal-300 px-2 py-1 rounded">{myTeam.length}/16</span>
+                  <span className="text-sm font-mono bg-gray-700 text-teal-300 px-2 py-1 rounded">{myTeam.length}/{totalSlots}</span>
               </div>
               <div className="space-y-3 h-64 overflow-y-auto pr-2">
                   {myTeamByPosition.map(({ position, players}) => ( players.length > 0 && (

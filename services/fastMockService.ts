@@ -1,5 +1,5 @@
 import { DraftSettings, Player, PlayerWithTier, TeamRosters, Position } from '../types';
-import { computeEssentialNeeds, mustForceEssentialPick, pickEssentialPlayer, TOTAL_ROSTER_SLOTS } from './rosterLogic.ts';
+import { computeEssentialNeeds, mustForceEssentialPick, pickEssentialPlayer, DEFAULT_TOTAL_ROSTER_SLOTS } from './rosterLogic.ts';
 
 // Fast mode: Simple tier-based picking with basic position needs
 export const getFastMockDraftPick = (
@@ -23,11 +23,15 @@ export const getFastMockDraftPick = (
 
   // Position priority based on typical draft strategy.
   // We DEPRIORITIZE K / DST until the final rounds (last 3-4 roster spots) unless everything else is filled.
-  const rosterSize = currentTeam.length; // target total = 16
+  const totalSlots = settings.totalRounds || DEFAULT_TOTAL_ROSTER_SLOTS;
+  const rosterSize = currentTeam.length; // target total dynamic
   const needs = computeEssentialNeeds(positionCounts as any);
-  const forceEssential = mustForceEssentialPick(rosterSize, needs);
-  const latePhase = rosterSize >= 12; // start considering K/DST lightly
-  const endPhase = rosterSize >= 14;  // must grab any missing K/DST
+  const forceEssential = mustForceEssentialPick(rosterSize, needs, totalSlots);
+  // Late / end phase thresholds scale relative to total slots (approx original logic 12 & 14 for 16)
+  const latePhaseThreshold = Math.max(8, Math.floor(totalSlots * 0.75));
+  const endPhaseThreshold = Math.max(latePhaseThreshold + 1, totalSlots - 2);
+  const latePhase = rosterSize >= latePhaseThreshold;
+  const endPhase = rosterSize >= endPhaseThreshold;
 
   const getPositionPriority = (position: Position, positionCounts: Record<Position, number>): number => {
     switch (position) {
@@ -79,7 +83,7 @@ export const getFastMockDraftPick = (
   }
 
   // End-game safeguard: if only 1 slot left after this pick and still missing K or DST, force whichever exists.
-  const slotsRemaining = TOTAL_ROSTER_SLOTS - rosterSize;
+  const slotsRemaining = totalSlots - rosterSize;
   if (slotsRemaining <= 2) {
     if (needs.needK) {
       const k = validPlayers.find(p => p.position === 'K');

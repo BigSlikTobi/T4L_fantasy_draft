@@ -20,6 +20,8 @@ export interface DraftSettings {
   draftId?: string;
   draftStartTime?: number; // epoch ms
   };
+  // Total planned draft rounds / roster slots (per team). Defaults to 16 if unspecified.
+  totalRounds?: number;
 }
 
 export interface Player {
@@ -113,6 +115,8 @@ export interface SleeperDraft {
   start_time?: number; // epoch ms
   sport?: string; // nfl
   settings?: Record<string, any>;
+  metadata?: Record<string, any>; // contains scoring_type, name, etc.
+  draft_order?: Record<string, number>; // user_id -> draft slot
 }
 
 export interface SleeperDraftPick {
